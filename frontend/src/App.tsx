@@ -17,10 +17,12 @@ export default function App() {
   const [baseRequest, setBaseRequest] = useState<BaseRequest | null>(null);
   const [offset, setOffset] = useState(0);
   const [result, setResult] = useState<RouteAnalysisResponse | null>(null);
+  const [currentResultOffset, setCurrentResultOffset] = useState<number>(0);
   const [error, setError] = useState<ApiError | null>(null);
   const [loading, setLoading] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const latestRequestedOffsetRef = useRef<number>(0);
 
   useEffect(() => {
     api
@@ -33,20 +35,27 @@ export default function App() {
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
+    latestRequestedOffsetRef.current = hours;
     setLoading(true);
     setError(null);
     try {
       const res = await api.analyzeRoutes({ ...req, forecast_offset_hours: hours }, controller.signal);
-      setResult(res);
-      setSelectedId((prev) =>
-        res.routes.some((r) => r.id === prev) ? prev : (res.recommendation.route_id ?? res.routes[0]?.id ?? null),
-      );
+      // Ensure stale response does not overwrite if another request was fired
+      if (latestRequestedOffsetRef.current === hours) {
+        setResult(res);
+        setCurrentResultOffset(hours);
+        setSelectedId((prev) =>
+          res.routes.some((r) => r.id === prev) ? prev : (res.recommendation.route_id ?? res.routes[0]?.id ?? null),
+        );
+      }
     } catch (e) {
       if (controller.signal.aborted) return;
-      setResult(null);
+      // If recalculating a slider shift and it fails, don't clear old trip if it exists, but show error
       setError(e instanceof ApiError ? e : new ApiError('UNKNOWN', 'Unexpected error.', 0));
     } finally {
-      if (!controller.signal.aborted) setLoading(false);
+      if (!controller.signal.aborted && latestRequestedOffsetRef.current === hours) {
+        setLoading(false);
+      }
     }
   }, []);
 
@@ -55,8 +64,7 @@ export default function App() {
     if (!baseRequest || !result) return;
     const t = setTimeout(() => void runAnalysis(baseRequest, offset), SLIDER_DEBOUNCE_MS);
     return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- only react to slider changes
-  }, [offset]);
+  }, [baseRequest, offset, runAnalysis, result]);
 
   function handleSubmit(req: BaseRequest) {
     setBaseRequest(req);
@@ -96,7 +104,17 @@ export default function App() {
         </aside>
 
         <section className="flex min-h-[480px] flex-col gap-3">
-          <StatusBanner loading={loading} error={error} result={result} />
+          <StatusBanner loading={loading} error={error} result={result} scenarioOffset={offset} />
+          {result && currentResultOffset > 0 && !loading && (
+            <div className="flex items-center justify-between rounded-md border border-sky-800/60 bg-sky-950/40 px-3 py-1.5 text-xs text-sky-200">
+              <span>
+                Viewing scenario shifted <strong>+{currentResultOffset} h</strong> from entered departure.
+              </span>
+              <span className="text-[11px] text-slate-400">
+                Effective departure: {new Date(result.effective_departure_time).toLocaleString()}
+              </span>
+            </div>
+          )}
           <div className="relative flex-1">
             <RouteMap routes={routes} selectedId={selectedId} />
           </div>

@@ -250,8 +250,8 @@ Problem & stack → enter trip → three routes & recommendation basis → check
 2. **Google Routes adapter integration & normalisation (done in stage 2):** live key verified, polylines decoded, alternatives normalized without fabrication.
 3. **Open-Meteo adapter integration & units (done in stage 2):** unit normalisation (including Open-Meteo `mp/h`), bounded chunk queries, cache verified.
 4. **Orchestration service (done in stage 2):** `/api/v1/route-analysis/` end-to-end pipeline, ETAs, risk classification, segments, metrics, lexicographic recommendation.
-5. Map: routes, segments, markers, popups, legend, overlay.
-6. Route cards, recommendation basis, slider wiring.
+5. **Map (done in stage 3):** routes, segments, markers, popups, legend, overlay, bounds fitting.
+6. **Route cards & slider (done in stage 3):** route cards, recommendation basis, debounced 0–48h scenario slider with stale response protection.
 7. Polish, deploy, README, Loom.
 
 ## 18. Decision log
@@ -261,4 +261,6 @@ Problem & stack → enter trip → three routes & recommendation basis → check
 - 2026-10-10: Stage-1 `/api/v1/route-analysis/` validates input, returns 503 if the key is missing, otherwise 501 `NOT_IMPLEMENTED` — no fake analyses.
 - 2026-10-10: Stage-2 implemented `RouteAnalysisService`: full end-to-end orchestration. Added `mp/h` unit alias from live Open-Meteo response. Added automatic `TRAFFIC_UNAWARE` fallback if departure is past to avoid Google 400. Checked and maintained strict contract compatibility with `frontend/src/api/types.ts`.
 - 2026-10-10: Stage-2.1 CI and integration audit: added autouse fixture in `backend/conftest.py` and env var in `.github/workflows/ci.yml` for isolated CI runs without local `.env`. Replaced Euclidean degree distance in `find_closest_forecast` with haversine distance (conservative 10-mile tolerance, rejecting ambiguous matches). Replaced midpoint coordinate averaging with exact `point_at_distance()` along route polyline for segment boundaries. Narrowed exception catching in `RouteAnalysisService` to `ProviderError` so unexpected runtime bugs bubble up cleanly.
+- 2026-10-10: Stage-3 Interactive Route Map & Recommendation Experience: Added `MapBoundsController` for viewport bounding on route changes without resetting during unrelated state changes. Refined route segments with hover tooltips and distinct selected/unselected visual weights. Added origin/destination markers. Enhanced checkpoint popups with full weather measurements, units, ETA, forecast hour, and risk reasons. Upgraded route cards with complete risk breakdown, average risk, and authoritative recommendation explanation. Hardened 0–48h slider with request aborting and stale response protection. All checks pass.
+
 
