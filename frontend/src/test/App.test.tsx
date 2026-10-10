@@ -311,5 +311,88 @@ describe('Route Comparison & Interaction Experience', () => {
     expect(screen.getByText(/15.0 mph/i)).toBeInTheDocument();
     expect(screen.getByText(/0.05 in\/hr/i)).toBeInTheDocument();
     expect(screen.getByText(/0.00 in\/hr/i)).toBeInTheDocument();
+    expect(screen.getAllByText('Low').length).toBeGreaterThan(0);
+  });
+
+  it('renders CheckpointDetails correctly for all 6 risk levels including Unknown and No Travel', async () => {
+    const { CheckpointDetails } = await import('../components/CheckpointDetails');
+    const levels: Array<'Low' | 'Moderate' | 'High' | 'Severe' | 'No Travel' | 'Unknown'> = [
+      'Low',
+      'Moderate',
+      'High',
+      'Severe',
+      'No Travel',
+      'Unknown',
+    ];
+
+    for (const level of levels) {
+      const cp: Checkpoint = {
+        ...MOCK_CHECKPOINT,
+        risk: { wind: level, rain: level, snow: level, overall: level },
+        forecast_available: level !== 'Unknown',
+        weather: {
+          wind_mph: level === 'Unknown' ? null : 20.0,
+          rain_in_per_hr: level === 'Unknown' ? null : 0.1,
+          snow_in_per_hr: level === 'Unknown' ? null : 0.0,
+          forecast_time: level === 'Unknown' ? null : '2026-10-11T13:00:00Z',
+        },
+      };
+      const { unmount } = render(<CheckpointDetails checkpoint={cp} />);
+      expect(screen.getAllByText(level).length).toBeGreaterThan(0);
+      if (level === 'Unknown') {
+        expect(screen.getByText(/Forecast unavailable for this checkpoint ETA/i)).toBeInTheDocument();
+        expect(screen.getAllByText('Unavailable').length).toBeGreaterThanOrEqual(3);
+      }
+      unmount();
+    }
+  });
+
+  it('triggers debounced re-analysis when forecast slider is adjusted', async () => {
+    const { fireEvent } = await import('@testing-library/react');
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (url.includes('route-analysis')) {
+        const body = JSON.parse(init?.body as string);
+        const offset = body.forecast_offset_hours || 0;
+        return Promise.resolve(
+          json({
+            ...MOCK_SUCCESS_RESPONSE,
+            request: { ...MOCK_SUCCESS_RESPONSE.request, forecast_offset_hours: offset },
+            effective_departure_time: `2026-10-12T${String(offset).padStart(2, '0')}:00:00Z`,
+          }),
+        );
+      }
+      return Promise.resolve(
+        json({
+          status: 'ok',
+          service: 's',
+          version: 'v1',
+          providers: { routing_configured: true, weather_base_url: '' },
+        }),
+      );
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<App />);
+    await userEvent.type(screen.getByLabelText('Origin'), 'Chicago, IL');
+    await userEvent.type(screen.getByLabelText('Destination'), 'Denver, CO');
+    await userEvent.click(screen.getByRole('button', { name: /Analyze routes/i }));
+
+    const slider = await screen.findByLabelText(/Forecast scenario/i);
+    expect(slider).not.toBeDisabled();
+
+    // Change slider value to 12
+    fireEvent.change(slider, { target: { value: '12' } });
+
+    await waitFor(
+      () => {
+        expect(fetchMock).toHaveBeenCalledWith(
+          expect.stringContaining('/api/v1/route-analysis/'),
+          expect.objectContaining({
+            body: expect.stringMatching(/"forecast_offset_hours":12/),
+          }),
+        );
+      },
+      { timeout: 3000 },
+    );
   });
 });

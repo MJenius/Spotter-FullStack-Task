@@ -4,7 +4,7 @@ Compare up to three driving routes and recommend the safest one based on forecas
 
 > **Canonical specification:** [`docs/PROJECT_SPEC.md`](docs/PROJECT_SPEC.md) — all requirements, risk thresholds, ranking rules, API contract and decisions live there. AI agents: see [`AGENTS.md`](AGENTS.md).
 
-**Status:** Stage 2 complete (orchestration backend). End-to-end route analysis (`POST /api/v1/route-analysis/`) is implemented and verified with Google Routes, Open-Meteo, distance checkpoints, risk evaluation, and lexicographic ranking. Frontend UI shell is connected; interactive map visualization will be finalized in Stage 3. Not deployed.
+**Status:** Stage 3 complete (interactive route map & recommendation experience). End-to-end route analysis (`POST /api/v1/route-analysis/`) is fully integrated with interactive multi-alternative map visualization, risk-colored polylines, corridor halos, checkpoint markers with weather popups, route comparison cards, detailed hazard inspection, and debounced 0–48h scenario slider. Deployment (Render/Vercel) and 5–10 min Loom walkthrough pending.
 
 ## Stack
 - **Frontend:** React 19 + TypeScript, Vite, Tailwind CSS v4, React Leaflet (OSM tiles), Vitest + RTL, ESLint + Prettier
