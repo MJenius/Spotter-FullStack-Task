@@ -13,6 +13,7 @@ jobs:
     env:
       DJANGO_DEBUG: 'true'
       DJANGO_SECRET_KEY: ci-only-not-secret
+      GOOGLE_ROUTES_API_KEY: test-key-not-real
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

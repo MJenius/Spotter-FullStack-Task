@@ -58,3 +58,25 @@ def test_eta_monotonic():
     steps = [RouteStep(10, 100), RouteStep(30, 900), RouteStep(60, 600)]
     etas = [eta_at_distance(dep, d, 100, 1600, steps) for d in range(0, 101, 5)]
     assert etas == sorted(etas)
+
+
+def test_segment_slices_follow_geometry():
+    from apps.api.services import slice_polyline_by_distance
+    from apps.routing.geometry import point_at_distance
+
+    cum = cumulative_distances(LINE)
+    total = cum[-1]
+    cps = generate_checkpoints(LINE, 25)
+
+    for cp in cps:
+        start_pt = point_at_distance(LINE, cum, cp.interval_start_miles)
+        end_pt = point_at_distance(LINE, cum, cp.interval_end_miles)
+        coords = slice_polyline_by_distance(
+            LINE, cum, cp.interval_start_miles, cp.interval_end_miles, start_pt, end_pt
+        )
+        assert coords[0] == pytest.approx(start_pt)
+        assert coords[-1] == pytest.approx(end_pt)
+        # All points in LINE are at latitude 0.0, so all segment vertices must remain at lat 0.0
+        for pt in coords:
+            assert pt[0] == pytest.approx(0.0)
+            assert 0.0 <= pt[1] <= total

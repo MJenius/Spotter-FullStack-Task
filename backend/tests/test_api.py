@@ -262,3 +262,46 @@ def test_routing_provider_error_handled(client):
     r = client.post(URL, VALID, format="json")
     assert r.status_code == 502
     assert r.json()["error"]["code"] == "UPSTREAM_ERROR"
+
+
+def test_find_closest_forecast_association_logic():
+    from apps.api.services import find_closest_forecast
+    from apps.weather.providers.base import LocationForecast
+
+    fc1 = LocationForecast(lat=41.0, lon=-90.0, hours={})
+    fc2 = LocationForecast(lat=42.0, lon=-91.0, hours={})
+
+    # Exact match
+    assert find_closest_forecast([fc1, fc2], 41.0, -90.0) == fc1
+
+    # Close match within conservative 10-mile tolerance (~0.05 degrees is ~3.5 miles)
+    assert find_closest_forecast([fc1, fc2], 41.03, -90.02) == fc1
+
+    # Far away (> 10 miles) returns None
+    assert find_closest_forecast([fc1, fc2], 41.5, -90.5) is None
+
+    # Empty list
+    assert find_closest_forecast([], 41.0, -90.0) is None
+
+    # Ambiguous match (two distinct forecasts within 0.1 mi of target)
+    fc_ambig1 = LocationForecast(lat=41.000, lon=-90.000, hours={})
+    fc_ambig2 = LocationForecast(lat=41.001, lon=-90.000, hours={})
+    # Target halfway between them
+    assert find_closest_forecast([fc_ambig1, fc_ambig2], 41.0005, -90.000) is None
+
+
+@respx.mock
+def test_unexpected_runtime_bug_in_weather_bubbles_up(client):
+    from unittest.mock import patch
+
+    respx.post(COMPUTE_ROUTES_URL).mock(
+        return_value=httpx.Response(200, json={"routes": [ROUTE_PAYLOAD]})
+    )
+
+    # RouteAnalysisService should NOT swallow unexpected Python programming bugs (like TypeError)
+    with patch(
+        "apps.weather.providers.open_meteo.OpenMeteoProvider.hourly_forecasts",
+        side_effect=TypeError("Unexpected bug"),
+    ):
+        with pytest.raises(TypeError, match="Unexpected bug"):
+            client.post(URL, VALID, format="json")

@@ -17,6 +17,8 @@ from apps.routing.geometry import (
     cumulative_distances,
     eta_at_distance,
     generate_checkpoints,
+    haversine_miles,
+    point_at_distance,
 )
 from apps.routing.providers.base import RoutingProvider
 from apps.routing.providers.google_routes import GoogleRoutesProvider
@@ -57,24 +59,42 @@ def slice_polyline_by_distance(
 
 
 def find_closest_forecast(
-    forecasts: list[LocationForecast], target_lat: float, target_lon: float
+    forecasts: list[LocationForecast],
+    target_lat: float,
+    target_lon: float,
+    max_tolerance_miles: float = 10.0,
 ) -> LocationForecast | None:
     """Associate returned forecast with the requested coordinate.
 
-    Uses Euclidean distance in degrees. If forecasts list is empty, returns None.
+    Uses haversine distance with a documented conservative tolerance (default 10 miles).
+    If no forecast is within tolerance, or if multiple forecasts are equally close within
+    a negligible delta, returns None (unknown risk).
     """
     if not forecasts:
         return None
-    best_fc = None
+
+    target = (target_lat, target_lon)
+    best_fc: LocationForecast | None = None
     best_dist = float("inf")
+    candidate_matches = 0
+
     for fc in forecasts:
-        # Distance squared
-        d_sq = (fc.lat - target_lat) ** 2 + (fc.lon - target_lon) ** 2
-        if d_sq < best_dist:
-            best_dist = d_sq
+        dist = haversine_miles(target, (fc.lat, fc.lon))
+        if dist < best_dist:
+            if best_dist - dist < 0.1:
+                candidate_matches += 1
+            else:
+                candidate_matches = 1
+            best_dist = dist
             best_fc = fc
-    # Only match if reasonably close (within ~1.0 degree)
-    if best_dist <= 1.0:
+        elif abs(dist - best_dist) < 0.1:
+            candidate_matches += 1
+
+    # Ambiguous match (multiple distinct forecasts equidistant within 0.1 mi): reject
+    if candidate_matches > 1:
+        return None
+
+    if best_dist <= max_tolerance_miles:
         return best_fc
     return None
 
@@ -199,8 +219,6 @@ class RouteAnalysisService:
                 weather_forecasts.extend(chunk_fcs)
             except ProviderError:
                 weather_fetch_failed = True
-            except Exception:
-                weather_fetch_failed = True
 
         if weather_fetch_failed:
             warnings.append(
@@ -292,22 +310,8 @@ class RouteAnalysisService:
             segments: list[dict[str, Any]] = []
             for i, cp in enumerate(cps):
                 cp_dict = analyzed_cps[i]
-                start_pt = (
-                    (r.polyline[0][0], r.polyline[0][1])
-                    if i == 0
-                    else (
-                        (cps[i - 1].lat + cp.lat) / 2,
-                        (cps[i - 1].lon + cp.lon) / 2,
-                    )
-                )
-                end_pt = (
-                    (r.polyline[-1][0], r.polyline[-1][1])
-                    if i == len(cps) - 1
-                    else (
-                        (cp.lat + cps[i + 1].lat) / 2,
-                        (cp.lon + cps[i + 1].lon) / 2,
-                    )
-                )
+                start_pt = point_at_distance(r.polyline, cum_dists, cp.interval_start_miles)
+                end_pt = point_at_distance(r.polyline, cum_dists, cp.interval_end_miles)
                 seg_coords = slice_polyline_by_distance(
                     r.polyline,
                     cum_dists,
