@@ -94,6 +94,15 @@ def test_open_meteo_unit_normalization():
     assert h.snow_in_per_hr == pytest.approx(1.0)
     assert loc.hours[datetime(2026, 10, 11, 14, tzinfo=UTC)].wind_mph is None
 
+    # Test 'mp/h' unit format returned by Open-Meteo
+    mph_payload = {
+        **OM_PAYLOAD,
+        "hourly_units": {**OM_PAYLOAD["hourly_units"], "wind_speed_10m": "mp/h"},
+        "hourly": {**OM_PAYLOAD["hourly"], "wind_speed_10m": [32.5, None]},
+    }
+    [loc_mph] = normalize_response(mph_payload)
+    assert loc_mph.hours[datetime(2026, 10, 11, 13, tzinfo=UTC)].wind_mph == pytest.approx(32.5)
+
 
 def test_open_meteo_unknown_unit_is_unavailable():
     payload = {**OM_PAYLOAD, "hourly_units": {**OM_PAYLOAD["hourly_units"], "rain": "furlong"}}

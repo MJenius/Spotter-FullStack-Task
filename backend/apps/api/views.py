@@ -5,8 +5,8 @@ from rest_framework.views import APIView
 
 from apps.providers_errors import ProviderNotConfigured
 
-from .errors import error_response
 from .serializers import RouteAnalysisRequestSerializer
+from .services import RouteAnalysisService
 
 
 class HealthView(APIView):
@@ -26,15 +26,13 @@ class HealthView(APIView):
 
 
 class RouteAnalysisView(APIView):
-    """Stage-1: validates the contract; analysis orchestration is implemented in milestone 4."""
+    """End-to-end route analysis workflow."""
 
     def post(self, request):
         serializer = RouteAnalysisRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         if not settings.GOOGLE_ROUTES_API_KEY:
             raise ProviderNotConfigured("GOOGLE_ROUTES_API_KEY is not configured on the server.")
-        return error_response(
-            "NOT_IMPLEMENTED",
-            "Route analysis is not implemented yet (request validated successfully).",
-            status.HTTP_501_NOT_IMPLEMENTED,
-        )
+        service = RouteAnalysisService()
+        result = service.analyze(serializer.validated_data)
+        return Response(result, status=status.HTTP_200_OK)

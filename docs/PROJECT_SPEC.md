@@ -247,9 +247,9 @@ Problem & stack → enter trip → three routes & recommendation basis → check
 
 ## 17. Milestones
 1. **Init (done in stage 1):** spec, scaffolds, risk engine, geometry utils, provider skeletons, health endpoint, contract, UI shell, CI.
-2. Google Routes adapter live integration + route normalisation.
-3. Open-Meteo adapter + unit/time matching + caching.
-4. Orchestration service → `/api/v1/route-analysis/` full response.
+2. **Google Routes adapter integration & normalisation (done in stage 2):** live key verified, polylines decoded, alternatives normalized without fabrication.
+3. **Open-Meteo adapter integration & units (done in stage 2):** unit normalisation (including Open-Meteo `mp/h`), bounded chunk queries, cache verified.
+4. **Orchestration service (done in stage 2):** `/api/v1/route-analysis/` end-to-end pipeline, ETAs, risk classification, segments, metrics, lexicographic recommendation.
 5. Map: routes, segments, markers, popups, legend, overlay.
 6. Route cards, recommendation basis, slider wiring.
 7. Polish, deploy, README, Loom.
@@ -259,3 +259,4 @@ Problem & stack → enter trip → three routes & recommendation basis → check
 - 2026-10-10: No Travel intervals are excluded from `average_risk` (ordinal mapping defined only Low–Severe) and reported as `no_travel_miles`; such routes are ineligible regardless. Metrics object therefore also includes `no_travel_miles`.
 - 2026-10-10: Initial corridor overlay = translucent risk-coloured circles per checkpoint (no extra dependency); may switch to `leaflet.heat` in milestone 5.
 - 2026-10-10: Stage-1 `/api/v1/route-analysis/` validates input, returns 503 if the key is missing, otherwise 501 `NOT_IMPLEMENTED` — no fake analyses.
+- 2026-10-10: Stage-2 implemented `RouteAnalysisService`: full end-to-end orchestration. Added `mp/h` unit alias from live Open-Meteo response. Added automatic `TRAFFIC_UNAWARE` fallback if departure is past to avoid Google 400. Checked and maintained strict contract compatibility with `frontend/src/api/types.ts`.

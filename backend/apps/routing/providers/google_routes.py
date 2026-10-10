@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 import httpx
 
 from apps.providers_errors import (
@@ -66,6 +68,10 @@ def normalize_routes(payload: dict) -> RouteResult:
             for s in leg.get("steps") or []
         ]
         labels = raw.get("routeLabels") or []
+        try:
+            decoded = decode_polyline(encoded)
+        except Exception:
+            continue  # Ignore routes with malformed polylines safely
         routes.append(
             Route(
                 id=f"route-{len(routes)}",
@@ -73,7 +79,7 @@ def normalize_routes(payload: dict) -> RouteResult:
                 description=raw.get("description") or "",
                 distance_miles=(raw.get("distanceMeters") or 0) / METERS_PER_MILE,
                 duration_seconds=_seconds(raw.get("duration") or raw.get("staticDuration")),
-                polyline=decode_polyline(encoded),
+                polyline=decoded,
                 steps=steps,
             )
         )
@@ -98,11 +104,22 @@ class GoogleRoutesProvider:
         self._client = client
 
     def compute_routes(self, request: RouteRequest) -> RouteResult:
+        # According to Google Routes API rules:
+        # TRAFFIC_AWARE or TRAFFIC_AWARE_OPTIMAL requires departureTime to be set in the future.
+        # If departure is in the past, Google Routes returns 400 if TRAFFIC_AWARE is sent.
+        routing_preference = "TRAFFIC_AWARE"
+        try:
+            dep_dt = datetime.fromisoformat(request.departure_time_iso.replace("Z", "+00:00"))
+            if dep_dt < datetime.now(UTC):
+                routing_preference = "TRAFFIC_UNAWARE"
+        except Exception:
+            pass
+
         body = {
             "origin": _waypoint(request.origin),
             "destination": _waypoint(request.destination),
             "travelMode": "DRIVE",
-            "routingPreference": "TRAFFIC_AWARE",
+            "routingPreference": routing_preference,
             "computeAlternativeRoutes": True,
             "departureTime": request.departure_time_iso,
             "polylineEncoding": "ENCODED_POLYLINE",

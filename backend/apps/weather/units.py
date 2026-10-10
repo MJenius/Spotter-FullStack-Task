@@ -4,6 +4,7 @@ from __future__ import annotations
 
 _SPEED_TO_MPH = {
     "mph": 1.0,
+    "mp/h": 1.0,
     "km/h": 1 / 1.609344,
     "m/s": 2.2369362920544,
     "kn": 1.150779448,
