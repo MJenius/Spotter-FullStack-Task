@@ -60,11 +60,13 @@ export default function App() {
   }, []);
 
   // Debounced re-analysis when the forecast slider moves (spec §8).
+  // Only trigger when the slider offset is different from the currently displayed result offset.
   useEffect(() => {
     if (!baseRequest || !result) return;
+    if (offset === currentResultOffset) return;
     const t = setTimeout(() => void runAnalysis(baseRequest, offset), SLIDER_DEBOUNCE_MS);
     return () => clearTimeout(t);
-  }, [baseRequest, offset, runAnalysis, result]);
+  }, [baseRequest, offset, currentResultOffset, runAnalysis, result]);
 
   function handleSubmit(req: BaseRequest) {
     setBaseRequest(req);

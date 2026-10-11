@@ -395,4 +395,114 @@ describe('Route Comparison & Interaction Experience', () => {
       { timeout: 3000 },
     );
   });
+
+  it('regression: does not trigger repeated analysis requests after initial success, and fires exactly one when slider changes', async () => {
+    const { fireEvent } = await import('@testing-library/react');
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (url.includes('route-analysis')) {
+        const body = JSON.parse(init?.body as string);
+        const offset = body.forecast_offset_hours || 0;
+        return Promise.resolve(
+          json({
+            ...MOCK_SUCCESS_RESPONSE,
+            request: { ...MOCK_SUCCESS_RESPONSE.request, forecast_offset_hours: offset },
+            effective_departure_time: `2026-10-12T${String(offset).padStart(2, '0')}:00:00Z`,
+          }),
+        );
+      }
+      return Promise.resolve(
+        json({
+          status: 'ok',
+          service: 's',
+          version: 'v1',
+          providers: { routing_configured: true, weather_base_url: '' },
+        }),
+      );
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<App />);
+    await userEvent.type(screen.getByLabelText('Origin'), 'Chicago, IL');
+    await userEvent.type(screen.getByLabelText('Destination'), 'Denver, CO');
+    await userEvent.click(screen.getByRole('button', { name: /Analyze routes/i }));
+
+    // Wait for initial analysis to finish
+    await screen.findByText('Route via I-80 W');
+
+    const countAnalysisCalls = () =>
+      fetchMock.mock.calls.filter((call) => typeof call[0] === 'string' && call[0].includes('route-analysis')).length;
+
+    expect(countAnalysisCalls()).toBe(1);
+
+    // Assert loading banner clears after successful response
+    expect(screen.queryByText(/Analyzing routes/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('status')).toBeNull();
+
+    // Wait longer than 500 ms and assert that no unintended second request occurs
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    expect(countAnalysisCalls()).toBe(1);
+
+    // Change forecast slider
+    const slider = screen.getByLabelText(/Forecast scenario/i);
+    fireEvent.change(slider, { target: { value: '8' } });
+
+    // Assert that exactly one debounced request is made with the new offset
+    await waitFor(() => {
+      expect(countAnalysisCalls()).toBe(2);
+    });
+    const secondCall = fetchMock.mock.calls.filter(
+      (call) => typeof call[0] === 'string' && call[0].includes('route-analysis'),
+    )[1];
+    expect(secondCall[1]?.body).toContain('"forecast_offset_hours":8');
+
+    // Wait again longer than 500ms and assert no further requests occur
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    expect(countAnalysisCalls()).toBe(2);
+  });
+
+  it('regression: loading state clears on success and API error does not leave interface permanently loading', async () => {
+    let shouldFail = false;
+    const fetchMock = vi.fn((url: string) => {
+      if (url.includes('route-analysis')) {
+        if (shouldFail) {
+          return Promise.resolve(
+            json({ error: { code: 'UPSTREAM_TIMEOUT', message: 'The routing or weather provider timed out.' } }, 504),
+          );
+        }
+        return Promise.resolve(json(MOCK_SUCCESS_RESPONSE));
+      }
+      return Promise.resolve(
+        json({
+          status: 'ok',
+          service: 's',
+          version: 'v1',
+          providers: { routing_configured: true, weather_base_url: '' },
+        }),
+      );
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<App />);
+    await userEvent.type(screen.getByLabelText('Origin'), 'Chicago, IL');
+    await userEvent.type(screen.getByLabelText('Destination'), 'Denver, CO');
+
+    // Trigger initial successful request
+    await userEvent.click(screen.getByRole('button', { name: /Analyze routes/i }));
+    await screen.findByText('Route via I-80 W');
+
+    // Verify loading is false and analyze button is enabled
+    expect(screen.getByRole('button', { name: /Analyze routes/i })).not.toBeDisabled();
+    expect(screen.queryByText(/Analyzing routes/i)).not.toBeInTheDocument();
+
+    // Now trigger an error request
+    shouldFail = true;
+    await userEvent.click(screen.getByRole('button', { name: /Analyze routes/i }));
+
+    // Verify error is shown and interface is not permanently loading
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent('UPSTREAM_TIMEOUT');
+    });
+    expect(screen.getByRole('button', { name: /Analyze routes/i })).not.toBeDisabled();
+    expect(screen.queryByText(/Analyzing routes/i)).not.toBeInTheDocument();
+  });
 });

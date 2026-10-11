@@ -21,6 +21,19 @@ function MapBoundsController({ routes }: { routes: AnalyzedRoute[] }) {
   const map = useMap();
 
   useEffect(() => {
+    // Invalidate map size so Leaflet recalculates tile grid dimensions on mount and resize
+    map.invalidateSize();
+    const handleResize = () => {
+      map.invalidateSize();
+    };
+    window.addEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+    };
+  }, [map]);
+
+  useEffect(() => {
+    map.invalidateSize();
     if (!routes.length) return;
 
     let minLat = 90;
